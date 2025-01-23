@@ -144,7 +144,7 @@ export default class App {
 		return marker;
 	}
 
-	_sphericalInterpolation(v1, v2) {
+	_sphericalInterpolation(v1, v2, t) {
 		v1.normalize();
 		v2.normalize();
 		const o = new THREE.Vector3(0, 0, 0);
@@ -156,18 +156,36 @@ export default class App {
 		const axis = o_v1.clone().cross(o_v2);
 		axis.normalize();
 
-		const q = new THREE.Quaternion().setFromAxisAngle(axis, angle);
+		const stepAngel = angle * t;
+		const q = new THREE.Quaternion().setFromAxisAngle(axis, stepAngel);
 
 		return v1.applyQuaternion(q);
 	}
 
 	_animateCamera(targetPosition) {
 		const startPosition = this._camera.position.clone();
-		const dist = startPosition.distanceTo(this._scene.position);
-		const newPosition = this._sphericalInterpolation(startPosition.clone(), targetPosition.clone()).multiplyScalar(dist);
 
-		this._camera.position.copy(newPosition);
-		this._camera.lookAt(this._scene.position);
+		const duration = 2000;
+		const startTime = Date.now();
+
+		const update = () => {
+			const currentTime = Date.now();
+			const elapsed = currentTime - startTime;
+			const progress = Math.min(elapsed / duration, 1);
+			const t = progress;
+
+			const dist = startPosition.distanceTo(this._scene.position);
+			const newPosition = this._sphericalInterpolation(startPosition.clone(), targetPosition.clone(), t).multiplyScalar(dist);
+
+			this._camera.position.copy(newPosition);
+			this._camera.lookAt(this._scene.position);
+
+			if (progress < 1) {
+				requestAnimationFrame(update);
+			}
+		};
+
+		update();
 	}
 
 	_getPosFromLatLonRad(lat, lon, radius) {
