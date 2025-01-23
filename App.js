@@ -120,8 +120,69 @@ export default class App {
 		});
 	}
 
+	_createCapitalLabel(name, lat, lon, radius) {
+		const markerDiv = document.createElement("div");
+		markerDiv.className = "marker";
+		markerDiv.textContent = name;
+
+		const marker = new CSS2DObject(markerDiv);
+		marker.position.copy(this._getPosFromLatLonRad(lat, lon, radius));
+
+		markerDiv.addEventListener("click", (e) => {
+			const div = e.target;
+
+			const targetPosition = marker.position.clone();
+			this._animateCamera(targetPosition);
+
+			this._labelRenderer.domElement.querySelectorAll(".selected").forEach((item) => {
+				item.classList.remove("selected");
+			});
+
+			div.classList.add("selected");
+		});
+
+		return marker;
+	}
+
+	_sphericalInterpolation(v1, v2) {
+		v1.normalize();
+		v2.normalize();
+		const o = new THREE.Vector3(0, 0, 0);
+
+		const o_v1 = v1.sub(o);
+		const o_v2 = v2.sub(o);
+		const angle = o_v1.angleTo(o_v2);
+
+		const axis = o_v1.clone().cross(o_v2);
+		axis.normalize();
+
+		const q = new THREE.Quaternion().setFromAxisAngle(axis, angle);
+
+		return v1.applyQuaternion(q);
+	}
+
+	_animateCamera(targetPosition) {
+		const startPosition = this._camera.position.clone();
+		const dist = startPosition.distanceTo(this._scene.position);
+		const newPosition = this._sphericalInterpolation(startPosition.clone(), targetPosition.clone()).multiplyScalar(dist);
+
+		this._camera.position.copy(newPosition);
+		this._camera.lookAt(this._scene.position);
+	}
+
+	_getPosFromLatLonRad(lat, lon, radius) {
+		var phi = (90 - lat) * (Math.PI / 180);
+		var theta = (lon + 180) * (Math.PI / 180);
+
+		let x = -(radius * Math.sin(phi) * Math.cos(theta));
+		let z = radius * Math.sin(phi) * Math.sin(theta);
+		let y = radius * Math.cos(phi);
+
+		return { x, y, z };
+	}
+
 	_setupControls() {
-		const arcballControls = new ArcballControls(this._camera, this._divContainer, this._scene);
+		const arcballControls = new ArcballControls(this._camera, this._labelRenderer.domElement, this._scene);
 		arcballControls.enablePan = false;
 		arcballControls.setGizmosVisible(false);
 
@@ -138,14 +199,33 @@ export default class App {
 
 	update() {
 		const delta = this._clock.getDelta();
-
 		this.arcballControls.update();
+
+		const raycaster = new THREE.Raycaster();
+		const posCam = new THREE.Vector3();
+		const posLabel = new THREE.Vector3();
+
+		this._camera.getWorldPosition(posCam);
+
+		this._scene.children.forEach((item) => {
+			if (!item.isCSS2DObject) return;
+
+			item.getWorldPosition(posLabel);
+			raycaster.set(posCam.clone(), posLabel.clone().sub(posCam));
+			const ints = raycaster.intersectObjects(this._earth, false);
+			if (ints.length > 0) {
+				const l1 = posLabel.distanceTo(posCam);
+				const l2 = ints[0].distance;
+				item.visible = l1 <= l2;
+			}
+		});
 	}
 
 	render() {
 		this.update();
 
 		this._renderer.render(this._scene, this._camera);
+		this._labelRenderer.render(this._scene, this._camera);
 
 		requestAnimationFrame(this.render.bind(this));
 	}
@@ -158,5 +238,7 @@ export default class App {
 		this._camera.updateProjectionMatrix();
 
 		this._renderer.setSize(width, height);
+		this._labelRenderer.setSize(window.innerWidth, window.innerHeight);
+		// this._labelRenderer.setSize(width, height);
 	}
 }
